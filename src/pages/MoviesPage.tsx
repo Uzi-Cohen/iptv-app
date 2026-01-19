@@ -1,14 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { VideoPlayer } from '../components';
 import { useXtream } from '../context/XtreamContext';
 import type { XtreamVodStream } from '../services/xtreamApi';
 import './MoviesPage.css';
 
+const MAX_DISPLAY = 50;
+
 export function MoviesPage() {
-  const { vodStreams, vodCategories, loadVodData, getVodUrl, isConnected } = useXtream();
+  const location = useLocation();
+  const { vodStreams, vodCategories, loadVodData, loadVodByCategory, getVodUrl, isConnected } = useXtream();
   const [selectedMovie, setSelectedMovie] = useState<XtreamVodStream | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [isLoadingCategory, setIsLoadingCategory] = useState(false);
 
   useEffect(() => {
     if (isConnected) {
@@ -16,19 +22,31 @@ export function MoviesPage() {
     }
   }, [isConnected, loadVodData]);
 
-  const featuredMovie = vodStreams[0];
+  // Set initial category when categories load
+  useEffect(() => {
+    if (vodCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(vodCategories[0].category_id);
+    }
+  }, [vodCategories, selectedCategory]);
 
-  const moviesByCategory = useMemo(() => {
-    const categoryMap: Record<string, XtreamVodStream[]> = {};
-    vodStreams.forEach(movie => {
-      const catId = movie.category_id || 'uncategorized';
-      if (!categoryMap[catId]) {
-        categoryMap[catId] = [];
-      }
-      categoryMap[catId].push(movie);
-    });
-    return categoryMap;
-  }, [vodStreams]);
+  // Handle navigation from search
+  useEffect(() => {
+    const state = location.state as { selectedMovie?: XtreamVodStream } | null;
+    if (state?.selectedMovie) {
+      setSelectedMovie(state.selectedMovie);
+      setShowModal(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  const handleCategoryChange = useCallback(async (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setIsLoadingCategory(true);
+    await loadVodByCategory(categoryId);
+    setIsLoadingCategory(false);
+  }, [loadVodByCategory]);
+
+  const featuredMovie = vodStreams[0];
 
   const getCategoryName = (catId: string) => {
     const cat = vodCategories.find(c => c.category_id === catId);
@@ -50,6 +68,9 @@ export function MoviesPage() {
     }
   };
 
+  // Limit displayed streams
+  const displayedMovies = vodStreams.slice(0, MAX_DISPLAY);
+
   if (!isConnected) {
     return (
       <div className="movies-page">
@@ -61,7 +82,7 @@ export function MoviesPage() {
     );
   }
 
-  if (vodStreams.length === 0) {
+  if (vodCategories.length === 0) {
     return (
       <div className="movies-page">
         <div className="loading-state">
@@ -113,14 +134,36 @@ export function MoviesPage() {
         </div>
       )}
 
-      {/* Content Rows */}
+      {/* Category Tabs and Grid */}
       <div className="movies-content">
-        {Object.entries(moviesByCategory).slice(0, 10).map(([catId, movies]) => (
-          <div key={catId} className="content-row">
-            <h2 className="row-title">{getCategoryName(catId)}</h2>
-            <div className="row-container">
-              <div className="row-content">
-                {movies.slice(0, 20).map(movie => (
+        <div className="category-tabs">
+          {vodCategories.map(cat => (
+            <button
+              key={cat.category_id}
+              className={`category-tab ${selectedCategory === cat.category_id ? 'active' : ''}`}
+              onClick={() => handleCategoryChange(cat.category_id)}
+            >
+              {cat.category_name}
+            </button>
+          ))}
+        </div>
+
+        <div className="movies-grid-section">
+          <h2 className="section-title">{getCategoryName(selectedCategory)}</h2>
+
+          {isLoadingCategory ? (
+            <div className="loading-category">
+              <div className="spinner-small"></div>
+              <span>Loading...</span>
+            </div>
+          ) : displayedMovies.length === 0 ? (
+            <div className="no-content">
+              <p>No movies in this category</p>
+            </div>
+          ) : (
+            <>
+              <div className="movies-grid">
+                {displayedMovies.map(movie => (
                   <div key={movie.stream_id} className="content-card" onClick={() => handleMovieClick(movie)}>
                     <div className="card-poster">
                       {movie.stream_icon ? (
@@ -150,9 +193,14 @@ export function MoviesPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        ))}
+              {vodStreams.length > MAX_DISPLAY && (
+                <div className="load-more-info">
+                  Showing {MAX_DISPLAY} of {vodStreams.length} movies
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Modal */}

@@ -1,14 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { VideoPlayer } from '../components';
 import { useXtream } from '../context/XtreamContext';
 import type { XtreamLiveStream } from '../services/xtreamApi';
 import './ChannelsPage.css';
 
+const MAX_DISPLAY = 100;
+
 export function ChannelsPage() {
-  const { liveStreams, liveCategories, loadLiveData, getLiveUrl, isConnected } = useXtream();
+  const location = useLocation();
+  const { liveStreams, liveCategories, loadLiveData, loadLiveByCategory, getLiveUrl, isConnected } = useXtream();
   const [selectedStream, setSelectedStream] = useState<XtreamLiveStream | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingCategory, setIsLoadingCategory] = useState(false);
 
   useEffect(() => {
     if (isConnected) {
@@ -16,24 +21,36 @@ export function ChannelsPage() {
     }
   }, [isConnected, loadLiveData]);
 
+  // Handle navigation from search
+  useEffect(() => {
+    const state = location.state as { selectedStream?: XtreamLiveStream } | null;
+    if (state?.selectedStream) {
+      setSelectedStream(state.selectedStream);
+      setIsPlaying(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  // Set initial category when categories load
+  useEffect(() => {
+    if (liveCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(liveCategories[0].category_id);
+    }
+  }, [liveCategories, selectedCategory]);
+
   useEffect(() => {
     if (liveStreams.length > 0 && !selectedStream) {
       setSelectedStream(liveStreams[0]);
     }
   }, [liveStreams, selectedStream]);
 
-  const filteredStreams = useMemo(() => {
-    if (selectedCategory === 'all') return liveStreams;
-    return liveStreams.filter(s => s.category_id === selectedCategory);
-  }, [liveStreams, selectedCategory]);
-
-  const categoryMap = useMemo(() => {
-    const map: Record<string, string> = { all: 'All' };
-    liveCategories.forEach(cat => {
-      map[cat.category_id] = cat.category_name;
-    });
-    return map;
-  }, [liveCategories]);
+  const handleCategoryChange = useCallback(async (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setIsLoadingCategory(true);
+    setSelectedStream(null);
+    await loadLiveByCategory(categoryId);
+    setIsLoadingCategory(false);
+  }, [loadLiveByCategory]);
 
   const handleSelectStream = (stream: XtreamLiveStream) => {
     setSelectedStream(stream);
@@ -44,6 +61,14 @@ export function ChannelsPage() {
       setIsPlaying(true);
     }
   };
+
+  const getCategoryName = (catId: string) => {
+    const cat = liveCategories.find(c => c.category_id === catId);
+    return cat?.category_name || 'Unknown';
+  };
+
+  // Limit displayed streams
+  const displayedStreams = liveStreams.slice(0, MAX_DISPLAY);
 
   if (!isConnected) {
     return (
@@ -56,7 +81,7 @@ export function ChannelsPage() {
     );
   }
 
-  if (liveStreams.length === 0) {
+  if (liveCategories.length === 0) {
     return (
       <div className="channels-page">
         <div className="loading-state">
@@ -97,9 +122,7 @@ export function ChannelsPage() {
                 <h2 className="preview-program">{selectedStream.name}</h2>
                 <div className="preview-meta">
                   <span className="live-badge">LIVE</span>
-                  {categoryMap[selectedStream.category_id] && (
-                    <span className="category-badge">{categoryMap[selectedStream.category_id]}</span>
-                  )}
+                  <span className="category-badge">{getCategoryName(selectedStream.category_id)}</span>
                 </div>
               </div>
             </div>
@@ -109,17 +132,11 @@ export function ChannelsPage() {
         <div className="channel-list-section">
           <div className="channel-list">
             <div className="channel-categories">
-              <button
-                className={`category-btn ${selectedCategory === 'all' ? 'active' : ''}`}
-                onClick={() => setSelectedCategory('all')}
-              >
-                All
-              </button>
               {liveCategories.map(cat => (
                 <button
                   key={cat.category_id}
                   className={`category-btn ${selectedCategory === cat.category_id ? 'active' : ''}`}
-                  onClick={() => setSelectedCategory(cat.category_id)}
+                  onClick={() => handleCategoryChange(cat.category_id)}
                 >
                   {cat.category_name}
                 </button>
@@ -127,31 +144,41 @@ export function ChannelsPage() {
             </div>
 
             <div className="channels-container">
-              {filteredStreams.map(stream => (
-                <div
-                  key={stream.stream_id}
-                  className={`channel-item ${selectedStream?.stream_id === stream.stream_id ? 'selected' : ''}`}
-                  onClick={() => handleSelectStream(stream)}
-                >
-                  <div className="channel-number">{stream.num}</div>
-                  <div className="channel-logo">
-                    {stream.stream_icon ? (
-                      <img src={stream.stream_icon} alt={stream.name} />
-                    ) : (
-                      <div className="channel-logo-placeholder">{stream.name.charAt(0)}</div>
-                    )}
-                  </div>
-                  <div className="channel-info">
-                    <h4 className="channel-name">{stream.name}</h4>
-                    {stream.epg_channel_id && (
-                      <p className="channel-program">EPG: {stream.epg_channel_id}</p>
-                    )}
-                  </div>
-                  {categoryMap[stream.category_id] && (
-                    <div className="channel-category-badge">{categoryMap[stream.category_id]}</div>
-                  )}
+              {isLoadingCategory ? (
+                <div className="loading-category">
+                  <div className="spinner-small"></div>
+                  <span>Loading...</span>
                 </div>
-              ))}
+              ) : displayedStreams.length === 0 ? (
+                <div className="no-channels">
+                  <p>No channels in this category</p>
+                </div>
+              ) : (
+                displayedStreams.map(stream => (
+                  <div
+                    key={stream.stream_id}
+                    className={`channel-item ${selectedStream?.stream_id === stream.stream_id ? 'selected' : ''}`}
+                    onClick={() => handleSelectStream(stream)}
+                  >
+                    <div className="channel-number">{stream.num}</div>
+                    <div className="channel-logo">
+                      {stream.stream_icon ? (
+                        <img src={stream.stream_icon} alt={stream.name} loading="lazy" />
+                      ) : (
+                        <div className="channel-logo-placeholder">{stream.name.charAt(0)}</div>
+                      )}
+                    </div>
+                    <div className="channel-info">
+                      <h4 className="channel-name">{stream.name}</h4>
+                    </div>
+                  </div>
+                ))
+              )}
+              {liveStreams.length > MAX_DISPLAY && (
+                <div className="load-more-info">
+                  Showing {MAX_DISPLAY} of {liveStreams.length} channels
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -5,3 +5,4 @@ export { ContentCard } from './ContentCard';
 export { ContentRow } from './ContentRow';
 export { HeroBanner } from './HeroBanner';
 export { ContentModal } from './ContentModal';
+export { SearchModal } from './SearchModal';

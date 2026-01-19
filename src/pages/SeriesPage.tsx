@@ -1,16 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { VideoPlayer } from '../components';
 import { useXtream } from '../context/XtreamContext';
 import { xtreamApi, type XtreamSeries, type XtreamSeriesInfo } from '../services/xtreamApi';
 import './SeriesPage.css';
 
+const MAX_DISPLAY = 50;
+
 export function SeriesPage() {
-  const { seriesList, seriesCategories, loadSeriesData, getSeriesUrl, isConnected } = useXtream();
+  const location = useLocation();
+  const { seriesList, seriesCategories, loadSeriesData, loadSeriesByCategory, getSeriesUrl, isConnected } = useXtream();
   const [selectedSeries, setSelectedSeries] = useState<XtreamSeries | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [seriesInfo, setSeriesInfo] = useState<XtreamSeriesInfo | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [playingEpisode, setPlayingEpisode] = useState<{ id: string; ext: string; title: string } | null>(null);
+  const [isLoadingCategory, setIsLoadingCategory] = useState(false);
+  const [selectedSeason, setSelectedSeason] = useState<string>('');
 
   useEffect(() => {
     if (isConnected) {
@@ -18,19 +25,40 @@ export function SeriesPage() {
     }
   }, [isConnected, loadSeriesData]);
 
-  const featuredSeries = seriesList[0];
+  // Set initial category when categories load
+  useEffect(() => {
+    if (seriesCategories.length > 0 && !selectedCategory) {
+      setSelectedCategory(seriesCategories[0].category_id);
+    }
+  }, [seriesCategories, selectedCategory]);
 
-  const seriesByCategory = useMemo(() => {
-    const categoryMap: Record<string, XtreamSeries[]> = {};
-    seriesList.forEach(s => {
-      const catId = s.category_id || 'uncategorized';
-      if (!categoryMap[catId]) {
-        categoryMap[catId] = [];
+  // Handle navigation from search
+  useEffect(() => {
+    const state = location.state as { selectedSeries?: XtreamSeries } | null;
+    if (state?.selectedSeries) {
+      handleSeriesClick(state.selectedSeries);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  // Set initial season when series info loads
+  useEffect(() => {
+    if (seriesInfo?.episodes) {
+      const seasons = Object.keys(seriesInfo.episodes).sort((a, b) => Number(a) - Number(b));
+      if (seasons.length > 0 && !selectedSeason) {
+        setSelectedSeason(seasons[0]);
       }
-      categoryMap[catId].push(s);
-    });
-    return categoryMap;
-  }, [seriesList]);
+    }
+  }, [seriesInfo, selectedSeason]);
+
+  const handleCategoryChange = useCallback(async (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setIsLoadingCategory(true);
+    await loadSeriesByCategory(categoryId);
+    setIsLoadingCategory(false);
+  }, [loadSeriesByCategory]);
+
+  const featuredSeries = seriesList[0];
 
   const getCategoryName = (catId: string) => {
     const cat = seriesCategories.find(c => c.category_id === catId);
@@ -41,6 +69,7 @@ export function SeriesPage() {
     setSelectedSeries(series);
     setShowModal(true);
     setSeriesInfo(null);
+    setSelectedSeason('');
 
     try {
       const info = await xtreamApi.getSeriesInfo(series.series_id);
@@ -56,19 +85,18 @@ export function SeriesPage() {
     setShowModal(false);
   };
 
-  const handlePlayFirstEpisode = async () => {
-    if (seriesInfo?.episodes) {
-      const seasons = Object.keys(seriesInfo.episodes).sort();
-      if (seasons.length > 0) {
-        const firstSeason = seasons[0];
-        const episodes = seriesInfo.episodes[firstSeason];
-        if (episodes && episodes.length > 0) {
-          const ep = episodes[0];
-          handlePlayEpisode(ep.id, ep.container_extension, `${selectedSeries?.name} - S${ep.season}E${ep.episode_num}`);
-        }
+  const handlePlayFirstEpisode = () => {
+    if (seriesInfo?.episodes && selectedSeason) {
+      const episodes = seriesInfo.episodes[selectedSeason];
+      if (episodes && episodes.length > 0) {
+        const ep = episodes[0];
+        handlePlayEpisode(ep.id, ep.container_extension, `${selectedSeries?.name} - S${ep.season}E${ep.episode_num}`);
       }
     }
   };
+
+  // Limit displayed series
+  const displayedSeries = seriesList.slice(0, MAX_DISPLAY);
 
   if (!isConnected) {
     return (
@@ -81,7 +109,7 @@ export function SeriesPage() {
     );
   }
 
-  if (seriesList.length === 0) {
+  if (seriesCategories.length === 0) {
     return (
       <div className="series-page">
         <div className="loading-state">
@@ -133,14 +161,36 @@ export function SeriesPage() {
         </div>
       )}
 
-      {/* Content Rows */}
+      {/* Category Tabs and Grid */}
       <div className="series-content">
-        {Object.entries(seriesByCategory).slice(0, 10).map(([catId, seriesItems]) => (
-          <div key={catId} className="content-row">
-            <h2 className="row-title">{getCategoryName(catId)}</h2>
-            <div className="row-container">
-              <div className="row-content">
-                {seriesItems.slice(0, 20).map(s => (
+        <div className="category-tabs">
+          {seriesCategories.map(cat => (
+            <button
+              key={cat.category_id}
+              className={`category-tab ${selectedCategory === cat.category_id ? 'active' : ''}`}
+              onClick={() => handleCategoryChange(cat.category_id)}
+            >
+              {cat.category_name}
+            </button>
+          ))}
+        </div>
+
+        <div className="series-grid-section">
+          <h2 className="section-title">{getCategoryName(selectedCategory)}</h2>
+
+          {isLoadingCategory ? (
+            <div className="loading-category">
+              <div className="spinner-small"></div>
+              <span>Loading...</span>
+            </div>
+          ) : displayedSeries.length === 0 ? (
+            <div className="no-content">
+              <p>No series in this category</p>
+            </div>
+          ) : (
+            <>
+              <div className="series-grid">
+                {displayedSeries.map(s => (
                   <div key={s.series_id} className="content-card" onClick={() => handleSeriesClick(s)}>
                     <div className="card-poster">
                       {s.cover ? (
@@ -170,9 +220,14 @@ export function SeriesPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        ))}
+              {seriesList.length > MAX_DISPLAY && (
+                <div className="load-more-info">
+                  Showing {MAX_DISPLAY} of {seriesList.length} series
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Modal */}
@@ -223,53 +278,64 @@ export function SeriesPage() {
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                     <path d="M8 5v14l11-7z"/>
                   </svg>
-                  Play First Episode
+                  Play
                 </button>
               </div>
 
-              {/* Episodes */}
+              {/* Season and Episode Selection */}
               {seriesInfo?.episodes ? (
                 <div className="modal-episodes">
-                  <h3 className="episodes-title">Episodes</h3>
-                  {Object.entries(seriesInfo.episodes).sort(([a], [b]) => Number(a) - Number(b)).map(([season, episodes]) => (
-                    <div key={season} className="season-group">
-                      <h4 className="season-title">Season {season}</h4>
-                      <div className="episodes-list">
-                        {episodes.map(ep => (
-                          <div
-                            key={ep.id}
-                            className="episode-item"
-                            onClick={() => handlePlayEpisode(ep.id, ep.container_extension, `${selectedSeries.name} - S${ep.season}E${ep.episode_num}`)}
-                          >
-                            <div className="episode-thumbnail">
-                              {ep.info?.movie_image ? (
-                                <img src={ep.info.movie_image} alt={ep.title} />
-                              ) : (
-                                <div className="episode-thumbnail-placeholder">
-                                  <span>E{ep.episode_num}</span>
-                                </div>
-                              )}
-                              <div className="episode-play-icon">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                                  <path d="M8 5v14l11-7z"/>
-                                </svg>
+                  <div className="season-selector">
+                    <h3 className="episodes-title">Episodes</h3>
+                    <div className="season-tabs">
+                      {Object.keys(seriesInfo.episodes).sort((a, b) => Number(a) - Number(b)).map(season => (
+                        <button
+                          key={season}
+                          className={`season-tab ${selectedSeason === season ? 'active' : ''}`}
+                          onClick={() => setSelectedSeason(season)}
+                        >
+                          Season {season}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedSeason && seriesInfo.episodes[selectedSeason] && (
+                    <div className="episodes-list">
+                      {seriesInfo.episodes[selectedSeason].map(ep => (
+                        <div
+                          key={ep.id}
+                          className="episode-item"
+                          onClick={() => handlePlayEpisode(ep.id, ep.container_extension, `${selectedSeries.name} - S${ep.season}E${ep.episode_num}`)}
+                        >
+                          <div className="episode-thumbnail">
+                            {ep.info?.movie_image ? (
+                              <img src={ep.info.movie_image} alt={ep.title} />
+                            ) : (
+                              <div className="episode-thumbnail-placeholder">
+                                <span>E{ep.episode_num}</span>
                               </div>
-                            </div>
-                            <div className="episode-info">
-                              <div className="episode-header">
-                                <span className="episode-number">E{ep.episode_num}</span>
-                                {ep.info?.duration && <span className="episode-duration">{ep.info.duration}</span>}
-                              </div>
-                              <h4 className="episode-name">{ep.title || `Episode ${ep.episode_num}`}</h4>
-                              {ep.info?.plot && (
-                                <p className="episode-description">{ep.info.plot}</p>
-                              )}
+                            )}
+                            <div className="episode-play-icon">
+                              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
                             </div>
                           </div>
-                        ))}
-                      </div>
+                          <div className="episode-info">
+                            <div className="episode-header">
+                              <span className="episode-number">Episode {ep.episode_num}</span>
+                              {ep.info?.duration && <span className="episode-duration">{ep.info.duration}</span>}
+                            </div>
+                            <h4 className="episode-name">{ep.title || `Episode ${ep.episode_num}`}</h4>
+                            {ep.info?.plot && (
+                              <p className="episode-description">{ep.info.plot}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : (
                 <div className="loading-episodes">

@@ -7,6 +7,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { connect, isLoading, error } = useXtream();
 
+  const [name, setName] = useState('');
   const [server, setServer] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,7 +18,7 @@ export function LoginPage() {
     setLocalError('');
 
     if (!server.trim() || !username.trim() || !password.trim()) {
-      setLocalError('Please fill in all fields');
+      setLocalError('Please fill in Host, Username, and Password');
       return;
     }
 
@@ -25,7 +26,7 @@ export function LoginPage() {
       server: server.trim(),
       username: username.trim(),
       password: password.trim(),
-    });
+    }, name.trim() || undefined);
 
     if (success) {
       navigate('/');
@@ -41,48 +42,65 @@ export function LoginPage() {
       </div>
 
       <div className="login-container">
-        <div className="login-card">
-          <div className="login-header">
-            <div className="login-logo">
-              <span className="logo-icon">TV</span>
-              <span className="logo-text">IPTV</span>
-            </div>
-            <h1>Connect to your IPTV Service</h1>
-            <p>Enter your Xtream Codes credentials to access live TV, movies, and series</p>
+        <div className="login-modal">
+          <div className="modal-header">
+            <button className="modal-close-btn" onClick={() => navigate('/')}>
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </button>
+            <h1 className="modal-title">Add Xtream-Codes API Playlist</h1>
+            <button
+              type="submit"
+              form="login-form"
+              className="modal-submit-btn"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="spinner-small"></span>
+              ) : (
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              )}
+            </button>
           </div>
 
-          <form className="login-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="server">Server URL</label>
+          <form id="login-form" className="login-form" onSubmit={handleSubmit}>
+            <div className="form-field">
               <input
                 type="text"
-                id="server"
-                placeholder="http://example.com:8080"
+                placeholder="Any name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-field">
+              <input
+                type="text"
+                placeholder="Host: e.g. http://server.com:8000"
                 value={server}
                 onChange={(e) => setServer(e.target.value)}
                 disabled={isLoading}
               />
-              <span className="input-hint">Include port number (e.g., http://server.com:8080)</span>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="username">Username</label>
+            <div className="form-field">
               <input
                 type="text"
-                id="username"
-                placeholder="Your username"
+                placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
               />
             </div>
 
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
+            <div className="form-field">
               <input
                 type="password"
-                id="password"
-                placeholder="Your password"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
@@ -91,38 +109,10 @@ export function LoginPage() {
 
             {displayError && (
               <div className="error-message">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-                </svg>
                 {displayError}
               </div>
             )}
-
-            <button type="submit" className="login-btn" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <span className="spinner"></span>
-                  Connecting...
-                </>
-              ) : (
-                'Connect'
-              )}
-            </button>
           </form>
-
-          <div className="login-info">
-            <h3>Supported Format</h3>
-            <p>This app supports Xtream Codes API. Your provider should give you:</p>
-            <ul>
-              <li>Server URL (with port)</li>
-              <li>Username</li>
-              <li>Password</li>
-            </ul>
-            <p className="m3u-note">
-              Or an M3U URL like:<br/>
-              <code>http://server:port/get.php?username=X&password=Y&type=m3u_plus</code>
-            </p>
-          </div>
         </div>
       </div>
     </div>

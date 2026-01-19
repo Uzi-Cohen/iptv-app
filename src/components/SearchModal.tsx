@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useXtream } from '../context/XtreamContext';
 import type { XtreamLiveStream, XtreamVodStream, XtreamSeries } from '../services/xtreamApi';
 import './SearchModal.css';
@@ -12,29 +12,56 @@ interface SearchModalProps {
 }
 
 export function SearchModal({ isOpen, onClose, onSelectChannel, onSelectMovie, onSelectSeries }: SearchModalProps) {
-  const { searchContent } = useXtream();
+  const { searchAll } = useXtream();
   const [query, setQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<{
     channels: XtreamLiveStream[];
     movies: XtreamVodStream[];
     series: XtreamSeries[];
   }>({ channels: [], movies: [], series: [] });
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = useCallback((value: string) => {
+  const handleSearch = useCallback(async (value: string) => {
     setQuery(value);
-    if (value.trim().length >= 2) {
-      const searchResults = searchContent(value);
-      setResults(searchResults);
-    } else {
-      setResults({ channels: [], movies: [], series: [] });
+
+    // Clear previous timeout
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
     }
-  }, [searchContent]);
+
+    if (value.trim().length < 2) {
+      setResults({ channels: [], movies: [], series: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    // Debounce search by 500ms
+    searchTimeout.current = setTimeout(async () => {
+      try {
+        const searchResults = await searchAll(value);
+        setResults(searchResults);
+      } catch (err) {
+        console.error('Search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500);
+  }, [searchAll]);
 
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setResults({ channels: [], movies: [], series: [] });
+      setIsSearching(false);
     }
+    return () => {
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current);
+      }
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -63,7 +90,7 @@ export function SearchModal({ isOpen, onClose, onSelectChannel, onSelectMovie, o
             <input
               type="text"
               className="search-input"
-              placeholder="Search channels, movies, series..."
+              placeholder="Search all channels, movies, series..."
               value={query}
               onChange={e => handleSearch(e.target.value)}
               autoFocus
@@ -85,7 +112,12 @@ export function SearchModal({ isOpen, onClose, onSelectChannel, onSelectMovie, o
               <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
                 <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
               </svg>
-              <p>Type at least 2 characters to search</p>
+              <p>Type at least 2 characters to search all content</p>
+            </div>
+          ) : isSearching ? (
+            <div className="search-loading">
+              <div className="search-spinner"></div>
+              <p>Searching all content...</p>
             </div>
           ) : !hasResults ? (
             <div className="search-no-results">

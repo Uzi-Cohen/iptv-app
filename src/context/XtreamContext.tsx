@@ -1,16 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { xtreamApi, type XtreamCredentials, type XtreamAuthResponse, type XtreamLiveStream, type XtreamVodStream, type XtreamSeries, type XtreamCategory } from '../services/xtreamApi';
 
-// Limits to prevent crashing
-const MAX_ITEMS_PER_CATEGORY = 50;
-const MAX_CATEGORIES_DISPLAY = 15;
-
 interface XtreamContextType {
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
   userInfo: XtreamAuthResponse | null;
-  connect: (credentials: XtreamCredentials) => Promise<boolean>;
+  playlistName: string;
+  connect: (credentials: XtreamCredentials, name?: string) => Promise<boolean>;
   disconnect: () => void;
   // Live TV
   liveCategories: XtreamCategory[];
@@ -31,8 +28,8 @@ interface XtreamContextType {
   getLiveUrl: (streamId: number) => string;
   getVodUrl: (streamId: number, extension: string) => string;
   getSeriesUrl: (episodeId: string, extension: string) => string;
-  // Search
-  searchContent: (query: string) => SearchResults;
+  // Search - fetches ALL content from API
+  searchAll: (query: string) => Promise<SearchResults>;
 }
 
 interface SearchResults {
@@ -48,8 +45,9 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<XtreamAuthResponse | null>(null);
+  const [playlistName, setPlaylistName] = useState('');
 
-  // Data states - store full data but limit what we display
+  // Data states
   const [liveCategories, setLiveCategories] = useState<XtreamCategory[]>([]);
   const [liveStreams, setLiveStreams] = useState<XtreamLiveStream[]>([]);
   const [vodCategories, setVodCategories] = useState<XtreamCategory[]>([]);
@@ -65,6 +63,8 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
           const auth = await xtreamApi.authenticate();
           setUserInfo(auth);
           setIsConnected(true);
+          const savedName = localStorage.getItem('xtream_playlist_name');
+          if (savedName) setPlaylistName(savedName);
         } catch {
           xtreamApi.clearCredentials();
           setIsConnected(false);
@@ -75,7 +75,7 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     checkConnection();
   }, []);
 
-  const connect = useCallback(async (credentials: XtreamCredentials): Promise<boolean> => {
+  const connect = useCallback(async (credentials: XtreamCredentials, name?: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
     try {
@@ -83,6 +83,10 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
       xtreamApi.setCredentials(credentials);
       setUserInfo(auth);
       setIsConnected(true);
+      if (name) {
+        setPlaylistName(name);
+        localStorage.setItem('xtream_playlist_name', name);
+      }
       setIsLoading(false);
       return true;
     } catch (err) {
@@ -96,6 +100,8 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     xtreamApi.clearCredentials();
     setIsConnected(false);
     setUserInfo(null);
+    setPlaylistName('');
+    localStorage.removeItem('xtream_playlist_name');
     setLiveCategories([]);
     setLiveStreams([]);
     setVodCategories([]);
@@ -108,12 +114,12 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return;
     try {
       const categories = await xtreamApi.getLiveCategories();
-      setLiveCategories((categories || []).slice(0, MAX_CATEGORIES_DISPLAY));
+      setLiveCategories(categories || []);
 
-      // Only load streams for the first category initially
+      // Load streams for the first category (not ALL)
       if (categories && categories.length > 0) {
         const streams = await xtreamApi.getLiveStreams(categories[0].category_id);
-        setLiveStreams((streams || []).slice(0, MAX_ITEMS_PER_CATEGORY));
+        setLiveStreams(streams || []);
       }
     } catch (err) {
       console.error('Failed to load live data:', err);
@@ -124,9 +130,8 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return [];
     try {
       const streams = await xtreamApi.getLiveStreams(categoryId === 'all' ? undefined : categoryId);
-      const limited = (streams || []).slice(0, MAX_ITEMS_PER_CATEGORY * 2);
-      setLiveStreams(limited);
-      return limited;
+      setLiveStreams(streams || []);
+      return streams || [];
     } catch (err) {
       console.error('Failed to load live streams:', err);
       return [];
@@ -137,12 +142,12 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return;
     try {
       const categories = await xtreamApi.getVodCategories();
-      setVodCategories((categories || []).slice(0, MAX_CATEGORIES_DISPLAY));
+      setVodCategories(categories || []);
 
-      // Only load streams for the first few categories
+      // Load streams for the first category (not ALL)
       if (categories && categories.length > 0) {
         const streams = await xtreamApi.getVodStreams(categories[0].category_id);
-        setVodStreams((streams || []).slice(0, MAX_ITEMS_PER_CATEGORY));
+        setVodStreams(streams || []);
       }
     } catch (err) {
       console.error('Failed to load VOD data:', err);
@@ -153,9 +158,8 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return [];
     try {
       const streams = await xtreamApi.getVodStreams(categoryId === 'all' ? undefined : categoryId);
-      const limited = (streams || []).slice(0, MAX_ITEMS_PER_CATEGORY * 2);
-      setVodStreams(limited);
-      return limited;
+      setVodStreams(streams || []);
+      return streams || [];
     } catch (err) {
       console.error('Failed to load VOD streams:', err);
       return [];
@@ -166,12 +170,12 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return;
     try {
       const categories = await xtreamApi.getSeriesCategories();
-      setSeriesCategories((categories || []).slice(0, MAX_CATEGORIES_DISPLAY));
+      setSeriesCategories(categories || []);
 
-      // Only load series for the first category
+      // Load series for the first category (not ALL)
       if (categories && categories.length > 0) {
         const series = await xtreamApi.getSeries(categories[0].category_id);
-        setSeriesList((series || []).slice(0, MAX_ITEMS_PER_CATEGORY));
+        setSeriesList(series || []);
       }
     } catch (err) {
       console.error('Failed to load series data:', err);
@@ -182,9 +186,8 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     if (!isConnected) return [];
     try {
       const series = await xtreamApi.getSeries(categoryId === 'all' ? undefined : categoryId);
-      const limited = (series || []).slice(0, MAX_ITEMS_PER_CATEGORY * 2);
-      setSeriesList(limited);
-      return limited;
+      setSeriesList(series || []);
+      return series || [];
     } catch (err) {
       console.error('Failed to load series:', err);
       return [];
@@ -203,16 +206,30 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
     return xtreamApi.getSeriesStreamUrl(episodeId, extension);
   }, []);
 
-  const searchContent = useCallback((query: string): SearchResults => {
+  // Search ALL content from API
+  const searchAll = useCallback(async (query: string): Promise<SearchResults> => {
     const q = query.toLowerCase().trim();
-    if (!q) return { channels: [], movies: [], series: [] };
+    if (!q || q.length < 2) return { channels: [], movies: [], series: [] };
+    if (!isConnected) return { channels: [], movies: [], series: [] };
 
-    return {
-      channels: liveStreams.filter(s => s.name.toLowerCase().includes(q)).slice(0, 20),
-      movies: vodStreams.filter(m => m.name.toLowerCase().includes(q)).slice(0, 20),
-      series: seriesList.filter(s => s.name.toLowerCase().includes(q)).slice(0, 20),
-    };
-  }, [liveStreams, vodStreams, seriesList]);
+    try {
+      // Fetch ALL data (no category filter) for comprehensive search
+      const [allLive, allVod, allSeries] = await Promise.all([
+        xtreamApi.getLiveStreams(),
+        xtreamApi.getVodStreams(),
+        xtreamApi.getSeries(),
+      ]);
+
+      return {
+        channels: (allLive || []).filter(s => s.name.toLowerCase().includes(q)).slice(0, 100),
+        movies: (allVod || []).filter(m => m.name.toLowerCase().includes(q)).slice(0, 100),
+        series: (allSeries || []).filter(s => s.name.toLowerCase().includes(q)).slice(0, 100),
+      };
+    } catch (err) {
+      console.error('Search failed:', err);
+      return { channels: [], movies: [], series: [] };
+    }
+  }, [isConnected]);
 
   return (
     <XtreamContext.Provider
@@ -221,6 +238,7 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         userInfo,
+        playlistName,
         connect,
         disconnect,
         liveCategories,
@@ -238,7 +256,7 @@ export function XtreamProvider({ children }: { children: ReactNode }) {
         getLiveUrl,
         getVodUrl,
         getSeriesUrl,
-        searchContent,
+        searchAll,
       }}
     >
       {children}

@@ -22,16 +22,20 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
     setIsLoading(true);
     setError(null);
 
+    // Clean up previous HLS instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
     const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('/live/') || streamUrl.includes('/movie/') || streamUrl.includes('/series/');
 
     if (isHls && Hls.isSupported()) {
-      // Use HLS.js for HLS streams
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        xhrSetup: (xhr) => {
-          xhr.withCredentials = false;
-        },
+        lowLatencyMode: false,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
       });
 
       hlsRef.current = hls;
@@ -41,6 +45,7 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setIsLoading(false);
+        setError(null);
         if (autoPlay) {
           video.play().catch((err) => {
             console.error('Autoplay failed:', err);
@@ -53,16 +58,15 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError('Network error - check your connection or stream URL');
+              console.log('Network error, trying to recover...');
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError('Media error - trying to recover...');
+              console.log('Media error, trying to recover...');
               hls.recoverMediaError();
               break;
             default:
               setError('Failed to load stream');
-              hls.destroy();
               break;
           }
         }
@@ -75,31 +79,53 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
       video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
+
+      const handleLoaded = () => {
         setIsLoading(false);
         if (autoPlay) {
           video.play().catch(console.error);
         }
-      });
-      video.addEventListener('error', () => {
+      };
+
+      const handleError = () => {
         setError('Failed to load stream');
         setIsLoading(false);
-      });
+      };
+
+      video.addEventListener('loadedmetadata', handleLoaded);
+      video.addEventListener('error', handleError);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoaded);
+        video.removeEventListener('error', handleError);
+      };
     } else {
       // Direct video file (mp4, mkv, etc.)
       video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
+
+      const handleLoaded = () => {
         setIsLoading(false);
         if (autoPlay) {
           video.play().catch(console.error);
         }
-      });
-      video.addEventListener('error', () => {
+      };
+
+      const handleError = () => {
         setError('Failed to load video');
         setIsLoading(false);
-      });
-    }
+      };
 
+      video.addEventListener('loadedmetadata', handleLoaded);
+      video.addEventListener('error', handleError);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoaded);
+        video.removeEventListener('error', handleError);
+      };
+    }
+  }, [streamUrl, autoPlay]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -109,11 +135,18 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-      }
     };
-  }, [streamUrl, onClose, autoPlay]);
+  }, [onClose]);
+
+  const handleRetry = () => {
+    setError(null);
+    setIsLoading(true);
+    if (hlsRef.current) {
+      hlsRef.current.startLoad();
+    } else if (videoRef.current) {
+      videoRef.current.load();
+    }
+  };
 
   return (
     <div className="video-player-overlay">
@@ -128,7 +161,7 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
         </div>
 
         <div className="video-wrapper">
-          {isLoading && (
+          {isLoading && !error && (
             <div className="video-loading">
               <div className="spinner"></div>
               <p>Loading stream...</p>
@@ -141,7 +174,7 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
               </svg>
               <p>{error}</p>
-              <button className="retry-btn" onClick={() => window.location.reload()}>
+              <button className="retry-btn" onClick={handleRetry}>
                 Retry
               </button>
             </div>
@@ -152,14 +185,9 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
             className="video-element"
             controls
             playsInline
-            crossOrigin="anonymous"
           >
             Your browser does not support the video tag.
           </video>
-        </div>
-
-        <div className="video-info">
-          <p className="stream-url">Stream: {streamUrl}</p>
         </div>
       </div>
     </div>

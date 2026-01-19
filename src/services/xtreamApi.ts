@@ -225,7 +225,7 @@ class XtreamApiService {
     return response.json();
   }
 
-  getLiveStreamUrl(streamId: number, extension: string = 'm3u8'): string {
+  getLiveStreamUrl(streamId: number, extension: string = 'ts'): string {
     if (!this.credentials) throw new Error('Not connected');
     return `${this.baseUrl}/live/${encodeURIComponent(this.credentials.username)}/${encodeURIComponent(this.credentials.password)}/${streamId}.${extension}`;
   }

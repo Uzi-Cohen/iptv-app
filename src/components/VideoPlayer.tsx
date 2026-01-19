@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import Hls from 'hls.js';
 import './VideoPlayer.css';
 
 interface VideoPlayerProps {
@@ -11,7 +10,6 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -22,107 +20,49 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
     setIsLoading(true);
     setError(null);
 
-    // Clean up previous HLS instance
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
+    // Simply set the source and let the browser handle it
+    video.src = streamUrl;
 
-    const isHls = streamUrl.includes('.m3u8') || streamUrl.includes('/live/') || streamUrl.includes('/movie/') || streamUrl.includes('/series/');
+    const handleCanPlay = () => {
+      setIsLoading(false);
+      setError(null);
+      if (autoPlay) {
+        video.play().catch((err) => {
+          console.error('Autoplay failed:', err);
+        });
+      }
+    };
 
-    if (isHls && Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-      });
+    const handleError = () => {
+      console.error('Video error for URL:', streamUrl);
+      setError('Failed to load stream. The stream may be offline or unavailable.');
+      setIsLoading(false);
+    };
 
-      hlsRef.current = hls;
+    const handleWaiting = () => {
+      setIsLoading(true);
+    };
 
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
+    const handlePlaying = () => {
+      setIsLoading(false);
+      setError(null);
+    };
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setIsLoading(false);
-        setError(null);
-        if (autoPlay) {
-          video.play().catch((err) => {
-            console.error('Autoplay failed:', err);
-          });
-        }
-      });
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleError);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
 
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        console.error('HLS Error:', data);
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log('Network error, trying to recover...');
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log('Media error, trying to recover...');
-              hls.recoverMediaError();
-              break;
-            default:
-              setError('Failed to load stream');
-              break;
-          }
-        }
-      });
+    // Start loading
+    video.load();
 
-      return () => {
-        hls.destroy();
-        hlsRef.current = null;
-      };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
-      video.src = streamUrl;
-
-      const handleLoaded = () => {
-        setIsLoading(false);
-        if (autoPlay) {
-          video.play().catch(console.error);
-        }
-      };
-
-      const handleError = () => {
-        setError('Failed to load stream');
-        setIsLoading(false);
-      };
-
-      video.addEventListener('loadedmetadata', handleLoaded);
-      video.addEventListener('error', handleError);
-
-      return () => {
-        video.removeEventListener('loadedmetadata', handleLoaded);
-        video.removeEventListener('error', handleError);
-      };
-    } else {
-      // Direct video file (mp4, mkv, etc.)
-      video.src = streamUrl;
-
-      const handleLoaded = () => {
-        setIsLoading(false);
-        if (autoPlay) {
-          video.play().catch(console.error);
-        }
-      };
-
-      const handleError = () => {
-        setError('Failed to load video');
-        setIsLoading(false);
-      };
-
-      video.addEventListener('loadedmetadata', handleLoaded);
-      video.addEventListener('error', handleError);
-
-      return () => {
-        video.removeEventListener('loadedmetadata', handleLoaded);
-        video.removeEventListener('error', handleError);
-      };
-    }
+    return () => {
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('error', handleError);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
+      video.src = '';
+    };
   }, [streamUrl, autoPlay]);
 
   useEffect(() => {
@@ -141,11 +81,13 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
   const handleRetry = () => {
     setError(null);
     setIsLoading(true);
-    if (hlsRef.current) {
-      hlsRef.current.startLoad();
-    } else if (videoRef.current) {
+    if (videoRef.current) {
       videoRef.current.load();
     }
+  };
+
+  const openExternal = () => {
+    window.open(streamUrl, '_blank');
   };
 
   return (
@@ -174,9 +116,14 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
               </svg>
               <p>{error}</p>
-              <button className="retry-btn" onClick={handleRetry}>
-                Retry
-              </button>
+              <div className="error-actions">
+                <button className="retry-btn" onClick={handleRetry}>
+                  Retry
+                </button>
+                <button className="external-btn" onClick={openExternal}>
+                  Open in External Player
+                </button>
+              </div>
             </div>
           )}
 
@@ -185,9 +132,17 @@ export function VideoPlayer({ streamUrl, title, onClose, autoPlay = true }: Vide
             className="video-element"
             controls
             playsInline
+            autoPlay={autoPlay}
           >
             Your browser does not support the video tag.
           </video>
+        </div>
+
+        <div className="video-info">
+          <p className="stream-url">{streamUrl}</p>
+          <button className="copy-url-btn" onClick={() => navigator.clipboard.writeText(streamUrl)}>
+            Copy URL
+          </button>
         </div>
       </div>
     </div>

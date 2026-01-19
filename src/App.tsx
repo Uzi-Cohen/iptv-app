@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Navigation } from './components';
-import { HomePage, ChannelsPage, MoviesPage, SeriesPage, LoginPage } from './pages';
+import { HomePage, ChannelsPage, MoviesPage, SeriesPage, LoginPage, ExtractorPage } from './pages';
 import { XtreamProvider } from './context/XtreamContext';
 import './App.css';
 
@@ -18,6 +18,7 @@ function AppContent() {
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/movies" element={<MoviesPage />} />
           <Route path="/series" element={<SeriesPage />} />
+          <Route path="/extractor" element={<ExtractorPage />} />
         </Routes>
       </main>
     </div>

@@ -7,7 +7,7 @@ import './Navigation.css';
 
 export function Navigation() {
   const navigate = useNavigate();
-  const { isConnected, disconnect, userInfo } = useXtream();
+  const { isConnected, disconnect, userInfo, playlistName } = useXtream();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
@@ -49,6 +49,9 @@ export function Navigation() {
           <NavLink to="/series" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Series
           </NavLink>
+          <NavLink to="/extractor" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Extractor
+          </NavLink>
         </div>
         <div className="nav-actions">
           {isConnected && (
@@ -69,9 +72,15 @@ export function Navigation() {
               {showDropdown && (
                 <div className="user-dropdown">
                   <div className="dropdown-header">
-                    <span className="dropdown-username">{userInfo?.user_info?.username}</span>
+                    <span className="dropdown-username">{playlistName || userInfo?.user_info?.username}</span>
                     <span className="dropdown-status">Connected</span>
                   </div>
+                  <button className="dropdown-item" onClick={() => { navigate('/login'); setShowDropdown(false); }}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                    </svg>
+                    Add Another Playlist
+                  </button>
                   <button className="dropdown-item" onClick={handleDisconnect}>
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                       <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>

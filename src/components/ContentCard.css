@@ -1,0 +1,144 @@
+.content-card {
+  flex-shrink: 0;
+  width: 180px;
+  cursor: pointer;
+  transition: transform 0.3s ease, z-index 0s 0.3s;
+}
+
+.content-card:hover {
+  transform: scale(1.08);
+  z-index: 10;
+  transition: transform 0.3s ease, z-index 0s;
+}
+
+.card-poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #2a2a2a;
+}
+
+.card-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: filter 0.3s ease;
+}
+
+.content-card:hover .card-poster img {
+  filter: brightness(0.6);
+}
+
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.content-card:hover .card-overlay {
+  opacity: 1;
+}
+
+.play-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #141414;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.play-btn:hover {
+  transform: scale(1.1);
+  background: white;
+}
+
+.play-btn svg {
+  margin-left: 4px;
+}
+
+.card-rating {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: white;
+  font-weight: 600;
+}
+
+.card-info {
+  padding: 12px 4px 4px;
+}
+
+.card-title {
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.card-year,
+.card-duration,
+.card-seasons {
+  color: #888;
+  font-size: 12px;
+}
+
+.card-genres {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.genre-tag {
+  background: #333;
+  color: #aaa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  .content-card {
+    width: 140px;
+  }
+
+  .card-title {
+    font-size: 13px;
+  }
+
+  .play-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .play-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+}

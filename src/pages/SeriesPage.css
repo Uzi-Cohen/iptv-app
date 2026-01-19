@@ -1,0 +1,17 @@
+.series-page {
+  min-height: 100vh;
+  background: #141414;
+}
+
+.series-content {
+  position: relative;
+  margin-top: -100px;
+  z-index: 10;
+  padding-bottom: 60px;
+}
+
+@media (max-width: 768px) {
+  .series-content {
+    margin-top: -60px;
+  }
+}
